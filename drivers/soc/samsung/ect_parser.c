@@ -464,7 +464,6 @@ static int ect_parse_rcc_header(void *address, struct ect_info *info)
 	struct ect_rcc_header *ect_rcc_header;
 	struct ect_rcc_domain *ect_rcc_domain;
 	void *address_rcc_header = address;
-
 	if (address == NULL)
 		return -EINVAL;
 
@@ -562,7 +561,7 @@ static int ect_parse_ap_thermal_function(int parser_version, void *address, stru
 		ect_parse_integer(&address, &range->flag);
 	}
 	if (range->max_frequency == 2314000) {
-	    range->max_frequency = 2600000;
+	    range->max_frequency = 2522000;
 	} else if (range->max_frequency == 1742000) {
 	    range->max_frequency = 2045000;
 	}
