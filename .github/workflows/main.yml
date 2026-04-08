@@ -1,71 +1,116 @@
-name: Build Kernel
-
+name: Build Grass Kernel
 on:
-  workflow_call:
   workflow_dispatch:
+    inputs:
+      target_device:
+        description: 'Select Device (or "all")'
+        required: true
+        default: 'm31'
+        type: choice
+        options:
+          - all
+          - a51
+          - m21
+          - m31
+          - m31s
+          - f41
+          - m30s
+      build_variant:
+        description: 'Build Variant'
+        required: true
+        default: 'OneUI'
+        type: choice
+        options:
+          - OneUI
+          - AOSP
+      include_ksu:
+        description: 'Include KernelSU-Next?'
+        required: true
+        type: boolean
+        default: true
 
 jobs:
-  build:
+  prep:
     runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: |
+          # Logic to handle "all" vs specific device
+          if [[ "${{ github.event.inputs.target_device }}" == "all" ]]; then
+            echo 'matrix=["a51", "m21", "m31", "m31s", "f41", "m30s"]' >> $GITHUB_OUTPUT
+          else
+            echo 'matrix=["${{ github.event.inputs.target_device }}"]' >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    needs: prep
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
-        build_type: ['OneUI']
-        device: ['m31']
-    name: "Build for ${{matrix.device}} (${{matrix.build_type}})"
+        device: ${{ fromJson(needs.prep.outputs.matrix) }}
+    
     steps:
       - name: Checkout
-        uses: actions/checkout@main
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Initialize submodules
-        run: git submodule update --init --recursive
-          
-      - name: Install WeebX Clang
+      - name: Install Toolchain (weebx-clang)
         run: |
           wget https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-18.1.8-release/WeebX-Clang-18.1.8.tar.gz -O "weebx-clang.tar.gz"
-          rm -rf toolchain && mkdir toolchain && tar -xvf weebx-clang.tar.gz -C toolchain && rm -rf weebx-clang.tar.gz
+          mkdir -p toolchain && tar -xf weebx-clang.tar.gz -C toolchain
           
       - name: KernelSU-Next Setup
-        run: ./KernelSU-Next/kernel/setup.sh
-        
-      - name: Set KernelSU-Next version
+        if: ${{ github.event.inputs.include_ksu == 'true' }}
         run: |
+          ./KernelSU-Next/kernel/setup.sh
           cd KernelSU-Next/kernel
-          BASE_VERSION=10200
-          KSU_VERSION=$(expr $(git rev-list --count HEAD) + "$BASE_VERSION")
+          KSU_VERSION=$(expr $(git rev-list --count HEAD) + 10200)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+          # Patch Makefile version
           sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" Makefile
           
-      - name: Build
+      - name: Build Kernel
         run: |
-          BUILD_TYPE_LOWER=$(echo "${{matrix.build_type}}" | tr '[:upper:]' '[:lower:]')
-          python build_kernel.py --$BUILD_TYPE_LOWER --target=${{matrix.device}}
-          # Use a wildcard that matches 'GrassKSU' or 'GrassKernel'
-          mv Grass*.zip "GrassKernel_${{matrix.device}}_${{matrix.build_type}}-KSU.zip"
+          # Map variant to lowercase flag
+          VARIANT_FLAG="--$(echo "${{ github.event.inputs.build_variant }}" | tr '[:upper:]' '[:lower:]')"
+          
+          # Check KSU toggle
+          KSU_FLAG=""
+          if [[ "${{ github.event.inputs.include_ksu }}" == "false" ]]; then
+            KSU_FLAG="--no-ksu"
+          fi
+          
+          python3 build_kernel.py $VARIANT_FLAG --target=${{ matrix.device }} $KSU_FLAG
 
-      - name: Show Build Logs
-        if: failure()
+      - name: Generate Changelog
         run: |
-          echo "=== STDOUT LOG ==="
-          cat *_stdout.log || true
-          echo "=== STDERR LOG ==="
-          cat *_stderr.log || true
+          echo "### 🪵 Grass Kernel Build Details" > build_info.md
+          echo "* **Device:** ${{ matrix.device }}" >> build_info.md
+          echo "* **Variant:** ${{ github.event.inputs.build_variant }}" >> build_info.md
+          echo "* **KSU-Next:** ${{ github.event.inputs.include_ksu == 'true' && 'Enabled' || 'Disabled' }}" >> build_info.md
+          echo "* **Toolchain:** WeebX Clang 18.1.8" >> build_info.md
+          echo "### 📝 Recent Changes" >> build_info.md
+          git log -n 10 --pretty=format:"* %h - %s" >> build_info.md
 
-      - name: Upload Kernel
-        if: success()
-        uses: actions/upload-artifact@main
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: GrassKernel_${{matrix.device}}_${{matrix.build_type}}-KSU
-          path: "GrassKernel_${{matrix.device}}_${{matrix.build_type}}-KSU.zip"
-          if-no-files-found: error
+          name: GrassKernel-${{ matrix.device }}-${{ github.event.inputs.build_variant }}-${{ github.event.inputs.include_ksu == 'true' && 'KSU' || 'NoKSU' }}
+          path: GrassKernel*.zip
 
-      - name: Upload Logs (if Failed)
-        if: failure()
-        uses: actions/upload-artifact@main
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: GrassKernel_${{matrix.device}}_${{matrix.build_type}}-LOG
-          path: "*.log"
-          if-no-files-found: warn
+          tag_name: ${{ matrix.device }}-${{ github.run_id }}
+          name: GrassKernel for ${{ matrix.device }}
+          body_path: build_info.md
+          files: GrassKernel*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
