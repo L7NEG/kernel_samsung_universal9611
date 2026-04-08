@@ -99,6 +99,21 @@ jobs:
           echo "### 📝 Recent Changes" >> build_info.md
           git log -n 10 --pretty=format:"* %h - %s" >> build_info.md
 
+      - name: Generate Action Page Summary
+        if: success()
+        run: |
+          echo "## 🚀 Build Successful: ${{ matrix.device }}" >> $GITHUB_STEP_SUMMARY
+          echo "| Detail | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Device** | ${{ matrix.device }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Variant** | ${{ github.event.inputs.build_variant }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **KernelSU** | ${{ github.event.inputs.include_ksu == 'true' && '✅ Enabled' || '❌ Disabled' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **KSU Version** | ${{ env.KSUVER || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Build Date** | $(date +'%Y-%m-%d') |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📝 Change Log (Last 5 Commits)" >> $GITHUB_STEP_SUMMARY
+          git log -n 5 --pretty=format:"* %h - %s" >> $GITHUB_STEP_SUMMARY
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
