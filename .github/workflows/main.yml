@@ -19,6 +19,9 @@ jobs:
         with:
           fetch-depth: 1
           submodules: recursive
+
+      - name: Setup KernelSU
+        run: ./KernelSU-Next/kernel/setup.sh
           
       - name: Install WeebX Clang
         run: |
