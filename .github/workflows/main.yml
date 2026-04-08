@@ -20,24 +20,24 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Initialize KernelSU submodule
+      - name: Initialize submodules
         run: git submodule update --init --recursive
-
-      - name: Set KernelSU version
+          
+      - name: Install WeebX Clang
+        run: |
+          wget https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-18.1.8-release/WeebX-Clang-18.1.8.tar.gz -O "weebx-clang.tar.gz"
+          rm -rf toolchain && mkdir toolchain && tar -xvf weebx-clang.tar.gz -C toolchain && rm -rf weebx-clang.tar.gz
+          
+      - name: KernelSU-Next Setup
+        run: ./KernelSU-Next/kernel/setup.sh
+        
+      - name: Set KernelSU-Next version
         run: |
           cd KernelSU-Next/kernel
           BASE_VERSION=10200
           KSU_VERSION=$(expr $(git rev-list --count HEAD) + "$BASE_VERSION")
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" Makefile
-
-      - name: Setup KernelSU
-        run: ./KernelSU-Next/kernel/setup.sh
-          
-      - name: Install WeebX Clang
-        run: |
-          wget https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-18.1.8-release/WeebX-Clang-18.1.8.tar.gz -O "weebx-clang.tar.gz"
-          rm -rf toolchain && mkdir toolchain && tar -xvf weebx-clang.tar.gz -C toolchain && rm -rf weebx-clang.tar.gz
           
       - name: Build
         run: |
@@ -62,7 +62,7 @@ jobs:
           path: "GrassKernel_${{matrix.device}}_${{matrix.build_type}}-KSU.zip"
           if-no-files-found: error
 
-      - name: Upload Logs
+      - name: Upload Logs (if Failed)
         if: failure()
         uses: actions/upload-artifact@main
         with:
