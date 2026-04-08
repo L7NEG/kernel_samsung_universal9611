@@ -17,8 +17,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@main
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           submodules: recursive
+
+      - name: Initialize KernelSU submodule
+        run: git submodule update --init --recursive
+
+      - name: Set KernelSU version
+        run: |
+          cd KernelSU-Next/kernel
+          BASE_VERSION=10200
+          KSU_VERSION=$(expr $(git rev-list --count HEAD) + "$BASE_VERSION")
+          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+          sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" Makefile
 
       - name: Setup KernelSU
         run: ./KernelSU-Next/kernel/setup.sh
