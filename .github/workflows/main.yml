@@ -32,6 +32,14 @@ jobs:
           # Use a wildcard that matches 'GrassKSU' or 'GrassKernel'
           mv Grass*.zip "GrassKernel_${{matrix.device}}_${{matrix.build_type}}-KSU.zip"
 
+      - name: Show Build Logs
+        if: failure()
+        run: |
+          echo "=== STDOUT LOG ==="
+          cat *_stdout.log || true
+          echo "=== STDERR LOG ==="
+          cat *_stderr.log || true
+
       - name: Upload Kernel
         if: success()
         uses: actions/upload-artifact@main
