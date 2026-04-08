@@ -3,129 +3,111 @@ on:
   workflow_dispatch:
     inputs:
       target_device:
-        description: 'Select Device (or "all")'
+        description: 'Select Device'
         required: true
-        default: 'm31'
+        default: 'all'
         type: choice
-        options:
-          - all
-          - a51
-          - m21
-          - m31
-          - m31s
-          - f41
-          - m30s
+        options: [all, a51, m21, m31, m31s, f41, m30s]
       build_variant:
         description: 'Build Variant'
         required: true
-        default: 'OneUI'
+        default: 'both'
         type: choice
-        options:
-          - OneUI
-          - AOSP
-      include_ksu:
-        description: 'Include KernelSU-Next?'
+        options: [OneUI, AOSP, both]
+      ksu_option:
+        description: 'KernelSU Option'
+        required: true
+        default: 'both'
+        type: choice
+        options: [KSU, NoKSU, both]
+      publish_release:
+        description: 'Publish to Nightly Release?'
         required: true
         type: boolean
         default: true
 
 jobs:
-  prep:
-    runs-on: ubuntu-24.04
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-    steps:
-      - id: set-matrix
-        run: |
-          # Logic to handle "all" vs specific device
-          if [[ "${{ github.event.inputs.target_device }}" == "all" ]]; then
-            echo 'matrix=["a51", "m21", "m31", "m31s", "f41", "m30s"]' >> $GITHUB_OUTPUT
-          else
-            echo 'matrix=["${{ github.event.inputs.target_device }}"]' >> $GITHUB_OUTPUT
-          fi
-
   build:
-    needs: prep
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
-        device: ${{ fromJson(needs.prep.outputs.matrix) }}
+        device: ${{ fromJSON(github.event.inputs.target_device == 'all' && '["a51", "m21", "m31", "m31s", "f41", "m30s"]' || format('["{0}"]', github.event.inputs.target_device)) }}
+        variant: ${{ fromJSON(github.event.inputs.build_variant == 'both' && '["OneUI", "AOSP"]' || format('["{0}"]', github.event.inputs.build_variant)) }}
+        ksu: ${{ fromJSON(github.event.inputs.ksu_option == 'both' && '["KSU", "NoKSU"]' || format('["{0}"]', github.event.inputs.ksu_option)) }}
+    
+    name: "Build: ${{ matrix.device }} (${{ matrix.variant }}) - ${{ matrix.ksu }}"
     
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Install Toolchain (weebx-clang)
+      - name: Install Toolchain
         run: |
           wget https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-18.1.8-release/WeebX-Clang-18.1.8.tar.gz -O "weebx-clang.tar.gz"
           mkdir -p toolchain && tar -xf weebx-clang.tar.gz -C toolchain
           
       - name: KernelSU-Next Setup
-        if: ${{ github.event.inputs.include_ksu == 'true' }}
+        if: ${{ matrix.ksu == 'KSU' }}
         run: |
           ./KernelSU-Next/kernel/setup.sh
           cd KernelSU-Next/kernel
           KSU_VERSION=$(expr $(git rev-list --count HEAD) + 10200)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-          # Patch Makefile version
           sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" Makefile
           
       - name: Build Kernel
         run: |
-          # Map variant to lowercase flag
-          VARIANT_FLAG="--$(echo "${{ github.event.inputs.build_variant }}" | tr '[:upper:]' '[:lower:]')"
-          
-          # Check KSU toggle
-          KSU_FLAG=""
-          if [[ "${{ github.event.inputs.include_ksu }}" == "false" ]]; then
-            KSU_FLAG="--no-ksu"
-          fi
-          
+          VARIANT_FLAG="--$(echo "${{ matrix.variant }}" | tr '[:upper:]' '[:lower:]')"
+          KSU_FLAG="${{ matrix.ksu == 'NoKSU' && '--no-ksu' || '' }}"
           python3 build_kernel.py $VARIANT_FLAG --target=${{ matrix.device }} $KSU_FLAG
 
-      - name: Generate Changelog
+      - name: Generate Changelog Tables
         run: |
-          echo "### 🪵 Grass Kernel Build Details" > build_info.md
-          echo "* **Device:** ${{ matrix.device }}" >> build_info.md
-          echo "* **Variant:** ${{ github.event.inputs.build_variant }}" >> build_info.md
-          echo "* **KSU-Next:** ${{ github.event.inputs.include_ksu == 'true' && 'Enabled' || 'Disabled' }}" >> build_info.md
-          echo "* **Toolchain:** WeebX Clang 18.1.8" >> build_info.md
-          echo "### 📝 Recent Changes" >> build_info.md
-          git log -n 10 --pretty=format:"* %h - %s" >> build_info.md
+          echo "---" > release_entry.md
+          echo "### 📦 Build: ${{ matrix.device }} (${{ matrix.variant }})" >> release_entry.md
+          echo "| Property | Details |" >> release_entry.md
+          echo "| :--- | :--- |" >> release_entry.md
+          echo "| **Device** | \`${{ matrix.device }}\` |" >> release_entry.md
+          echo "| **Variant** | ${{ matrix.variant }} |" >> release_entry.md
+          echo "| **KernelSU** | ${{ matrix.ksu == 'KSU' && '✅ Enabled' || '❌ Disabled' }} |" >> release_entry.md
+          echo "| **KSU Version** | \`${{ env.KSUVER || 'N/A' }}\` |" >> release_entry.md
+          echo "| **Timestamp** | $(date +'%Y-%m-%d %H:%M') |" >> release_entry.md
+          echo "" >> release_entry.md
+          echo "#### 🛠 Recent Commits" >> release_entry.md
+          echo "| Hash | Message | Author |" >> release_entry.md
+          echo "| :--- | :--- | :--- |" >> release_entry.md
+          git log -n 5 --pretty=format:"| %h | %s | %an |" >> release_entry.md
+          echo "" >> release_entry.md
 
-      - name: Generate Action Page Summary
-        if: success()
-        run: |
-          echo "## 🚀 Build Successful: ${{ matrix.device }}" >> $GITHUB_STEP_SUMMARY
-          echo "| Detail | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Device** | ${{ matrix.device }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Variant** | ${{ github.event.inputs.build_variant }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **KernelSU** | ${{ github.event.inputs.include_ksu == 'true' && '✅ Enabled' || '❌ Disabled' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **KSU Version** | ${{ env.KSUVER || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Build Date** | $(date +'%Y-%m-%d') |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📝 Change Log (Last 5 Commits)" >> $GITHUB_STEP_SUMMARY
-          git log -n 5 --pretty=format:"* %h - %s" >> $GITHUB_STEP_SUMMARY
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+      # Always upload artifacts so you can download them from the Action summary
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v6
         with:
-          name: GrassKernel-${{ matrix.device }}-${{ github.event.inputs.build_variant }}-${{ github.event.inputs.include_ksu == 'true' && 'KSU' || 'NoKSU' }}
+          name: GrassKernel-${{ matrix.device }}-${{ matrix.variant }}-${{ matrix.ksu }}
           path: GrassKernel*.zip
 
-      - name: Create Release
+      # Only runs if "Publish to Nightly Release?" was checked
+      - name: Nightly Release
+        if: ${{ github.event.inputs.publish_release == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ matrix.device }}-${{ github.run_id }}
-          name: GrassKernel for ${{ matrix.device }}
-          body_path: build_info.md
+          tag_name: nightly
+          name: "Grass Kernel Nightly Builds"
+          body_path: release_entry.md
+          append_body: true 
+          prerelease: true
           files: GrassKernel*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Action Page Summary
+        if: success()
+        run: |
+          echo "## Build Info: ${{ matrix.device }}" >> $GITHUB_STEP_SUMMARY
+          cat release_entry.md >> $GITHUB_STEP_SUMMARY
