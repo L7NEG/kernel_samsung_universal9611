@@ -55,11 +55,11 @@ jobs:
       - name: KernelSU-Next Setup
         if: ${{ matrix.ksu == 'KSU' }}
         run: |
-          ./KernelSU-Next/kernel/setup.sh
+          ./KernelSU-Next/kernel/setup.sh legacy
           cd KernelSU-Next/kernel
           KSU_VERSION=$(expr $(git rev-list --count HEAD) + 10200)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-          sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" Makefile
+          sed -i "s/DKSU_VERSION=[0-9]*/DKSU_VERSION=${KSU_VERSION}/" Makefile
           
       - name: Build Kernel
         run: |
