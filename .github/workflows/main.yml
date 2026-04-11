@@ -85,29 +85,40 @@ jobs:
           git log -n 5 --pretty=format:"| %h | %s | %an |" >> release_entry.md
           echo "" >> release_entry.md
 
-      # Always upload artifacts so you can download them from the Action summary
       - name: Upload Artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: GrassKernel-${{ matrix.device }}-${{ matrix.variant }}-${{ matrix.ksu }}
-          path: GrassKernel*.zip
-
-      # Only runs if "Publish to Nightly Release?" was checked
-      - name: Nightly Release
-        if: ${{ github.event.inputs.publish_release == 'true' }}
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: nightly
-          name: "Grass Kernel Nightly Builds"
-          body_path: release_entry.md
-          append_body: true 
-          prerelease: true
-          files: GrassKernel*.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: kernel-${{ matrix.device }}-${{ matrix.variant }}-${{ matrix.ksu }}
+          path: |
+            GrassKernel*.zip
+            release_entry.md
 
       - name: Action Page Summary
         if: success()
         run: |
           echo "## Build Info: ${{ matrix.device }}" >> $GITHUB_STEP_SUMMARY
           cat release_entry.md >> $GITHUB_STEP_SUMMARY
+
+  publish:
+    needs: build
+    if: ${{ github.event.inputs.publish_release == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all builds
+        uses: actions/download-artifact@v8
+        with:
+          path: all_kernels
+          merge-multiple: true
+
+      - name: Nightly Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: "Grass Kernel Nightly Builds"
+          body: "Automated nightly build for Samsung Universal9611 devices."
+          prerelease: true
+          files: all_kernels/GrassKernel*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
