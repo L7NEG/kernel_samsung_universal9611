@@ -25,7 +25,9 @@ on:
         required: true
         type: boolean
         default: true
-
+        push:
+        paths:
+        -'KernelSU-Next/**'
 jobs:
   build:
     runs-on: ubuntu-24.04
