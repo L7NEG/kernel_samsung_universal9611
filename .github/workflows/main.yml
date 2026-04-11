@@ -25,9 +25,10 @@ on:
         required: true
         type: boolean
         default: true
-        push:
-        paths:
-        -'KernelSU-Next/**'
+  push:
+    paths:
+      - 'KernelSU-Next/**'
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -57,10 +58,14 @@ jobs:
       - name: KernelSU-Next Setup
         if: ${{ matrix.ksu == 'KSU' }}
         run: |
+          # Run the setup script with the legacy flag
           ./KernelSU-Next/kernel/setup.sh legacy
+          
           cd KernelSU-Next/kernel
           KSU_VERSION=$(expr $(git rev-list --count HEAD) + 10200)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+          
+          # Sync versioning in the Makefile
           sed -i "s/DKSU_VERSION=[0-9]*/DKSU_VERSION=${KSU_VERSION}/" Makefile
           
       - name: Build Kernel
@@ -103,13 +108,14 @@ jobs:
 
   publish:
     needs: build
-    if: ${{ github.event.inputs.publish_release == 'true' }}
+    # Runs on manual 'true' OR when triggered by the push from the sync bot
+    if: ${{ always() && (github.event.inputs.publish_release == 'true' || github.event_name == 'push') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Download all builds
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v6
         with:
           path: all_kernels
           merge-multiple: true
@@ -119,8 +125,9 @@ jobs:
         with:
           tag_name: nightly
           name: "Grass Kernel Nightly Builds"
-          body: "Automated nightly build for Samsung Universal9611 devices."
+          body: "Automated nightly build for Samsung Universal9611 devices. Synced with KernelSU-Next legacy branch."
           prerelease: true
+          make_latest: true
           files: all_kernels/GrassKernel*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
