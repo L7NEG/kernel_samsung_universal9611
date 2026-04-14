@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        device: ${{ fromJSON((github.event.inputs.target_device == 'all' || github.event.inputs.target_device == '') && '["a51","m21","m31","m31s","f41","m30s"]' || format('["{0}"]', github.event.inputs.target_device)) }}
+        device: ${{ fromJSON((github.event.inputs.target_device == 'all' || github.event.inputs.target_device == '') && '["a51","m21","m31","m31s","f41","m30s","gta4xl","gta4xlwifi"]' || format('["{0}"]', github.event.inputs.target_device)) }}
         variant: ${{ fromJSON((github.event.inputs.build_variant == 'both' || github.event.inputs.build_variant == '') && '["OneUI","AOSP"]' || format('["{0}"]', github.event.inputs.build_variant)) }}
         ksu: ${{ fromJSON((github.event.inputs.ksu_option == 'both' || github.event.inputs.ksu_option == '') && '["KSU","NoKSU"]' || format('["{0}"]', github.event.inputs.ksu_option)) }}
 
@@ -81,6 +81,7 @@ jobs:
 
       - name: Generate Changelog Tables
         run: |
+          REPO_URL="${{ github.server_url }}/${{ github.repository }}"
           echo "---" > release_entry.md
           echo "### Build: ${{ matrix.device }} (${{ matrix.variant }})" >> release_entry.md
           echo "| Property | Details |" >> release_entry.md
@@ -89,12 +90,12 @@ jobs:
           echo "| **Variant** | ${{ matrix.variant }} |" >> release_entry.md
           echo "| **KernelSU** | ${{ matrix.ksu == 'KSU' && 'Enabled' || 'Disabled' }} |" >> release_entry.md
           echo "| **KSU Version** | \`${{ env.KSUVER || 'N/A' }}\` |" >> release_entry.md
-          echo "| **Timestamp** | $(date +'%Y-%m-%d %H:%M') |" >> release_entry.md
+          echo "| **Timestamp** | $(date +'%Y-%m-%d %H:%M UTC') |" >> release_entry.md
           echo "" >> release_entry.md
           echo "#### Recent Commits" >> release_entry.md
           echo "| Hash | Message | Author |" >> release_entry.md
           echo "| :--- | :--- | :--- |" >> release_entry.md
-          git log -n 5 --pretty=format:"| %h | %s | %an |" >> release_entry.md
+          git log -n 10 --pretty=format:"| [\`%h\`](${REPO_URL}/commit/%H) | %s | %an |" >> release_entry.md
           echo "" >> release_entry.md
 
       - name: Upload Artifacts
@@ -108,8 +109,21 @@ jobs:
       - name: Action Page Summary
         if: success()
         run: |
-          echo "## Build Info: ${{ matrix.device }}" >> $GITHUB_STEP_SUMMARY
-          cat release_entry.md >> $GITHUB_STEP_SUMMARY
+          REPO_URL="${{ github.server_url }}/${{ github.repository }}"
+          echo "## Build: ${{ matrix.device }} (${{ matrix.variant }}) - ${{ matrix.ksu }}" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Details |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Device** | \`${{ matrix.device }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Variant** | ${{ matrix.variant }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **KernelSU** | ${{ matrix.ksu == 'KSU' && 'Enabled' || 'Disabled' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **KSU Version** | \`${{ env.KSUVER || 'N/A' }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Timestamp** | $(date +'%Y-%m-%d %H:%M UTC') |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Recent Commits" >> $GITHUB_STEP_SUMMARY
+          echo "| Hash | Message | Author |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          git log -n 10 --pretty=format:"| [\`%h\`](${REPO_URL}/commit/%H) | %s | %an |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
 
   publish:
     needs: build
