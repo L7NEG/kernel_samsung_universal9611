@@ -25,7 +25,7 @@
 * Supports DeX touchpad for corresponding OneUI ports that have DeX ported.
 * Lot of debug codes/configuration Samsung added are removed.
 * Added [wireguard](https://www.wireguard.com/) driver, an open-source VPN driver in-kernel
-* Added [KernelSU](https://kernelsu.org/)
+* Added [KernelSU-Next](https://kernelsu-next.github.io/webpage/)
 
 ## How To Build
 
