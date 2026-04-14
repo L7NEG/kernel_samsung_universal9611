@@ -95,8 +95,8 @@ def main():
         print("Please specify one of the following variants: --oneui or --aosp")
         return
     
-    if not args.target in ['a51', 'm21', 'm31', 'm31s', 'f41', 'm30s']:
-        print("Please specify a valid target: a51/m21/m31/m31s/f41/m30s")
+    if not args.target in ['a51', 'm21', 'm31', 'm31s', 'f41', 'm30s', 'gta4xl', 'gta4xlwifi']:
+        print("Please specify a valid target: a51/m21/m31/m31s/f41/m30s/gta4xl/gta4xlwifi")
         return
     
     # Check files
@@ -133,7 +133,6 @@ def main():
     make_common = ['make', 'O=out', 'LLVM=1', f'-j{os.cpu_count()}']
     make_defconfig += make_common 
     defconfigs = [f'{args.target}_defconfig', 'grass.config', f'{args.target}.config']
-    defconfigs.append('kpatch.config')
     if not args.no_ksu:
         defconfigs.append('ksu.config')
     if args.aosp:
