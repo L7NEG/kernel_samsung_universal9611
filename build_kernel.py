@@ -1,5 +1,6 @@
 import argparse
 import subprocess
+import sys
 import os
 import shutil
 import re
@@ -24,11 +25,14 @@ def popen_impl(command: list[str]):
         with open(stderr_log, "w") as f:
             f.write(err)
         print(f"Output log files: {stdout_log}, {stderr_log}")
-        
+        return out, err
+
     if s.returncode != 0:
         if debug_popen_impl:
             print('failed')
-        write_logs(out, err)
+        out_str, err_str = write_logs(out, err)
+        print(out_str)
+        print(err_str, file=sys.stderr)
         raise RuntimeError(f"Command failed: {command}. Exitcode: {s.returncode}")
     if debug_popen_impl:
         print(f'result: {s.returncode == 0}')
@@ -69,7 +73,7 @@ class CompilerClang:
         except RuntimeError as e:
             print("Failed to execute clang, something went wrong")
             raise e
-    
+
     @staticmethod
     def get_version():
         clangversionRegex = r"(.*?clang version \d+(\.\d+)*).*"
@@ -78,10 +82,10 @@ class CompilerClang:
         _, tcversion = s.communicate()
         tcversion = tcversion.decode('utf-8')
         return match_and_get(clangversionRegex, tcversion)
-    
+
 def main():
     parser = argparse.ArgumentParser(description="Build Grass Kernel with specified arguments")
-    
+
     parser.add_argument('--oneui', action='store_true', help="OneUI variant")
     parser.add_argument('--aosp', action='store_true', help="AOSP variant")
     parser.add_argument('--target', type=str, required=True, help="Target device (a51/m21/...)")
@@ -90,25 +94,25 @@ def main():
 
     # Parse the arguments
     args = parser.parse_args()
-    
+
     if not args.oneui and not args.aosp:
         print("Please specify one of the following variants: --oneui or --aosp")
         return
-    
+
     if not args.target in ['a51', 'm21', 'm31', 'm31s', 'f41', 'm30s']:
         print("Please specify a valid target: a51/m21/m31/m31s/f41/m30s")
         return
-    
+
     # Check files
     if not check_file("AnyKernel3/version"):
         popen_impl(['git', 'submodule', 'update', '--init'])
     if not check_file("toolchain"):
         print(f"Please make toolchain available at {os.getcwd()}")
         return
-    
+
     CompilerClang.test_executable()
     variantStr = 'OneUI' if args.oneui else 'AOSP'
-    
+
     # Print info
     print_dictinfo({
         'TARGET_KERNEL': 'Grass',
@@ -118,20 +122,20 @@ def main():
         'TARGET_USES_LLVM': True,
         'TOOLCHAIN': CompilerClang.get_version(),
     })
-    
+
     # Add toolchain in PATH environment variable
     tcPath = os.path.join(os.getcwd(), 'toolchain', 'bin')
     if tcPath not in os.environ['PATH'].split(os.pathsep):
         os.environ["PATH"] = tcPath + ':' + os.environ["PATH"]
-    
+
     outDir = 'out'
     if os.path.exists(outDir) and not args.allow_dirty:
         print('Make clean...')
         shutil.rmtree(outDir)
-    
+
     make_defconfig = []
     make_common = ['make', 'O=out', 'LLVM=1', f'-j{os.cpu_count()}']
-    make_defconfig += make_common 
+    make_defconfig += make_common
     defconfigs = [f'{args.target}_defconfig', f'{args.target}.config', 'grass.config']
     if not args.no_ksu:
         defconfigs.append('ksu.config')
@@ -139,7 +143,7 @@ def main():
         defconfigs.append('aosp.config')
     defconfigs = ['vendor/' + i for i in defconfigs]
     make_defconfig += defconfigs
-    
+
     t = datetime.now()
     print('Make defconfig...')
     popen_impl(make_defconfig)
@@ -147,16 +151,16 @@ def main():
     popen_impl(make_common)
     print('Done')
     t = datetime.now() - t
-    
+
     with open(os.path.join(outDir, 'include', 'generated', 'utsrelease.h')) as f:
         kver = match_and_get(r'"([^"]+)"', f.read())
-    
+
     shutil.copyfile('out/arch/arm64/boot/Image', 'AnyKernel3/Image')
     zipname = 'GrassKernel_{}_{}_{}.zip'.format(
         args.target, variantStr, datetime.today().strftime('%Y-%m-%d'))
     os.chdir('AnyKernel3/')
     zip_files(zipname, [
-        'Image', 
+        'Image',
         'META-INF/com/google/android/update-binary',
         'META-INF/com/google/android/updater-script',
         'tools/ak3-core.sh',
@@ -176,6 +180,6 @@ def main():
         'KERNEL_VERSION': kver,
         'ESCLAPED_TIME': str(t.total_seconds()) + ' seconds'
     })
-    
+
 if __name__ == '__main__':
     main()
